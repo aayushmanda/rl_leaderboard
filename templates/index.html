@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IITM RL Leaderboard 2026</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .hero { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); color: white; padding: 2.5rem 0; }
+        .card { border: none; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .table-hover tbody tr:hover { background-color: rgba(13, 110, 253, 0.05); }
+    </style>
+</head>
+<body>
+
+    <!-- Hero Header -->
+    <div class="hero mb-4 text-center">
+        <div class="container">
+            <h1 class="fw-bold">Industrial Inventory Control RL Leaderboard</h1>
+            <p class="lead mb-0">Course ID6002W | IIT Madras Web M.Tech Program</p>
+        </div>
+    </div>
+
+    <div class="container mb-5">
+        
+        <!-- Navigation & Auth Bar -->
+        <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white rounded shadow-sm">
+            <div>
+                {% if current_user %}
+                    <span class="fw-bold text-success">● Logged in as:</span> {{ current_user.name }} ({{ current_user.roll_number }})
+                {% else %}
+                    <span class="text-muted">Log in with your official IITM email (@smail.iitm.ac.in) to submit models.</span>
+                {% endif %}
+            </div>
+            <div>
+                {% if current_user %}
+                    <a href="/dashboard" class="btn btn-outline-primary btn-sm me-2">My Dashboard</a>
+                    <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+                {% else %}
+                    <a href="/login" class="btn btn-primary btn-sm">Login with IITM Email</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Flash Alert Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row g-4">
+            <!-- Leaderboard Table -->
+            <div class="col-lg-8">
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4 class="fw-bold m-0">Public Leaderboard</h4>
+                        <span class="badge bg-secondary">Evaluated on 20 Public Episodes</span>
+                    </div>
+                    <p class="text-muted small">Rankings are calculated using the overall average cost across a student's best 5 distinct RL techniques.</p>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th scope="col">Rank</th>
+                                    <th scope="col">Roll Number</th>
+                                    <th scope="col" class="text-center">Qualifying Techniques</th>
+                                    <th scope="col" class="text-end">Avg Public Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if leaderboard %}
+                                    {% for row in leaderboard %}
+                                        <tr>
+                                            <th scope="row">{{ loop.index }}</th>
+                                            <td class="fw-bold">{{ row.roll_number }}</td>
+                                            <td class="text-center">
+                                                <span class="badge bg-{{ 'success' if row.technique_count >= 5 else 'warning' }}">
+                                                    {{ row.technique_count }} / 5
+                                                </span>
+                                            </td>
+                                            <td class="text-end fw-bold text-primary">{{ "%.2f"|format(row.avg_cost) }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">No successful policy submissions recorded yet.</td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Submission Form -->
+            <div class="col-lg-4">
+                <div class="card p-4">
+                    <h5 class="fw-bold mb-3">Submit RL Policy</h5>
+                    {% if current_user %}
+                        <form action="/submit" method="POST" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="technique_name" class="form-label small fw-bold">Select Technique</label>
+                                <select class="form-select form-select-sm" id="technique_name" name="technique_name" required>
+                                    <option value="" disabled selected>-- Select Technique --</option>
+                                    {% for tech in techniques %}
+                                        <option value="{{ tech }}">{{ tech }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="file" class="form-label small fw-bold">Package File (.zip or .py)</label>
+                                <input class="form-control form-control-sm" type="file" id="file" name="file" accept=".zip,.py" required>
+                                <div class="form-text extra-small">Zip archives must contain <code>policy.py</code> at the root level.</div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 btn-sm fw-bold">Evaluate Submission</button>
+                        </form>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted small">Please log in with your official IIT Madras email to upload submissions.</p>
+                            <a href="/login" class="btn btn-outline-primary btn-sm">Login with Google</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
