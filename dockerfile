@@ -25,4 +25,4 @@ RUN mkdir -p submissions
 EXPOSE 5000
 
 # Initialize DB on start and run Gunicorn WSGI server
-CMD python init_db.py && gunicorn --bind 0.0.0.0:5000 --workers 3 app:app
+CMD sh -c "python -c 'from database import init_db; init_db()' && gunicorn --bind 0.0.0.0:5000 --workers 3 app:app"

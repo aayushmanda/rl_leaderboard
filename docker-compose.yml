@@ -1,17 +1,14 @@
-version: '3.8'
-
 services:
   leaderboard:
     build: .
     container_name: iitm_rl_leaderboard
     restart: always
     ports:
-      - "5000:5000"
-    env_file:
-      - .env
+      - "5001:5000"
     volumes:
       # Persist SQLite DB and student submissions on the host server
       - ./leaderboard.db:/app/leaderboard.db
       - ./submissions:/app/submissions
     environment:
-      - OAUTHLIB_INSECURE_TRANSPORT=0 # Enforce HTTPS in production
+      OAUTHLIB_INSECURE_TRANSPORT: "1"
+      PYTHONUNBUFFERED: "1"
