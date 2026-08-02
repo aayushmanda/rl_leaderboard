@@ -1,11 +1,16 @@
+import os
 import sqlite3
 
-DB_NAME = 'leaderboard.db'
+DATA_DIR = 'data'
+DB_NAME = os.path.join(DATA_DIR, 'leaderboard.db')
 
 def get_db_connection():
-    """Establishes connection to SQLite database with Row factory."""
-    conn = sqlite3.connect(DB_NAME)
+    """Establishes connection to SQLite database with WAL journaling and a busy timeout."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_NAME, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL;')
+    conn.execute('PRAGMA busy_timeout=30000;')
     return conn
 
 def init_db():
@@ -94,6 +99,41 @@ def record_submission(email, roll, technique, folder, cost, status, error):
         INSERT INTO submissions (student_email, roll_number, technique_name, submission_folder, public_avg_cost, status, error_message)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (email, roll, technique, folder, cost, status, error))
+    conn.commit()
+    conn.close()
+
+def record_initial_submission(email, roll, technique, folder):
+    """Inserts a new submission record with queued status before background evaluation."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO submissions (student_email, roll_number, technique_name, submission_folder, public_avg_cost, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (email, roll, technique, folder, 0.0, 'QUEUED', None))
+    conn.commit()
+    submission_id = cursor.lastrowid
+    conn.close()
+    return submission_id
+
+def fetch_submission_by_id(submission_id):
+    conn = get_db_connection()
+    submission = conn.execute("""
+        SELECT id, student_email, roll_number, technique_name, submission_folder
+        FROM submissions
+        WHERE id = ?
+    """, (submission_id,)).fetchone()
+    conn.close()
+    return submission
+
+def update_submission(submission_id, cost, status, error):
+    conn = get_db_connection()
+    conn.execute("""
+        UPDATE submissions
+        SET public_avg_cost = ?,
+            status = ?,
+            error_message = ?
+        WHERE id = ?
+    """, (cost, status, error, submission_id))
     conn.commit()
     conn.close()
 

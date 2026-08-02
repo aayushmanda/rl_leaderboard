@@ -5,10 +5,34 @@ services:
     restart: always
     ports:
       - "5001:5000"
-    volumes:
-      # Persist SQLite DB and student submissions on the host server
-      - ./leaderboard.db:/app/leaderboard.db
-      - ./submissions:/app/submissions
+    env_file:
+      - .env
     environment:
-      OAUTHLIB_INSECURE_TRANSPORT: "1"
-      PYTHONUNBUFFERED: "1"
+      - PYTHONUNBUFFERED=1
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      # Persist SQLite DB directory, student submissions, and deliverables on host
+      - ./data:/app/data
+      - ./submissions:/app/submissions
+      - ./deliverables:/app/deliverables
+
+  redis:
+    image: redis:7-alpine
+    container_name: iitm_rl_redis
+    restart: always
+
+  worker:
+    build: .
+    container_name: iitm_rl_worker
+    restart: always
+    depends_on:
+      - redis
+    command: rq worker submission_queue --url redis://redis:6379/0
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./submissions:/app/submissions
+      - ./deliverables:/app/deliverables

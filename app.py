@@ -5,13 +5,16 @@ from werkzeug.utils import secure_filename
 
 from env import normalize_roll_number  # Utility from official env package
 from database import (
-    init_db, 
-    fetch_leaderboard, 
-    fetch_user_history, 
-    record_submission, 
+    init_db,
+    fetch_leaderboard,
+    fetch_user_history,
+    record_initial_submission,
+    update_submission,
     record_deliverables
 )
-from evaluator import ALLOWED_TECHNIQUES, safe_extract_zip, run_evaluation_sandboxed
+from evaluator import ALLOWED_TECHNIQUES, safe_extract_zip
+from redis import Redis
+from rq import Queue
 
 # Environment setup
 try:
@@ -31,9 +34,7 @@ except ImportError:
 ALLOWED_DOMAINS = {'smail.iitm.ac.in', 'iitm.ac.in'}
 
 app = Flask(__name__)
-
-# Fresh secret key on boot forces logout/session invalidation on server restarts
-app.secret_key = os.urandom(24)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
 
 app.config['UPLOAD_FOLDER'] = 'submissions'
 app.config['DELIVERABLES_FOLDER'] = 'deliverables'
@@ -41,6 +42,11 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB Max Upload Limit
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['DELIVERABLES_FOLDER'], exist_ok=True)
+os.makedirs('data', exist_ok=True)
+
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://redis:6379/0')
+redis_conn = Redis.from_url(REDIS_URL)
+submission_queue = Queue('submission_queue', connection=redis_conn)
 
 # Initialize Database Schema
 init_db()
@@ -52,7 +58,7 @@ RAW_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
 GOOGLE_CLIENT_ID = RAW_CLIENT_ID.strip('\'" \\\n\r')
 GOOGLE_CLIENT_SECRET = RAW_CLIENT_SECRET.strip('\'" \\\n\r')
 
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = os.environ.get('OAUTHLIB_INSECURE_TRANSPORT', '1')
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = os.environ.get('OAUTHLIB_INSECURE_TRANSPORT', '0')
 
 oauth = OAuth(app)
 google = oauth.register(
@@ -169,17 +175,23 @@ def submit():
             flash("Invalid file format! Please upload a .zip or .py file.", "error")
             return redirect(url_for('dashboard'))
 
-        # Triggers sandboxed evaluation using student's roll number variant
-        res = run_evaluation_sandboxed(sub_folder, roll)
-        record_submission(user['email'], roll, technique_name, sub_folder, res.get('public_cost', 0.0), res['status'], res.get('error', ''))
-
-        if res['status'] == 'SUCCESS':
-            flash(f"Submission evaluated! Public Avg Cost across 20 episodes: {res['public_cost']:.2f}", "success")
-        else:
-            flash(f"Evaluation Failed: {res['error']}", "error")
-
+        submission_id = record_initial_submission(
+            user['email'], roll, technique_name, sub_folder
+        )
+        submission_queue.enqueue(
+            'worker_tasks.process_submission_task',
+            submission_id,
+            job_timeout=900
+        )
+        flash(
+            "Your submission has been queued for evaluation. "
+            "Results will appear on your dashboard once processing completes.",
+            "info"
+        )
     except Exception as exc:
-        flash(f"Package Processing Error: {str(exc)}", "error")
+        if 'submission_id' in locals():
+            update_submission(submission_id, 0.0, 'FAILED', f"Queue error: {exc}")
+        flash(f"Submission error: {str(exc)}", "error")
 
     return redirect(url_for('dashboard'))
 
@@ -217,4 +229,5 @@ def submit_deliverables():
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
+    # Local dev only; Docker/Oracle should run via gunicorn
     app.run(debug=True, host='0.0.0.0', port=5000)
