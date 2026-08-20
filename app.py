@@ -30,6 +30,13 @@ except ImportError:
     class OAuth:
         def __init__(self, app): pass
         def register(self, **kwargs): pass
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+DEADLINE = datetime(2026, 8, 31, 0, 0, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+
+def submissions_open():
+    return datetime.now(ZoneInfo("Asia/Kolkata")) < DEADLINE
 
 ALLOWED_DOMAINS = {'smail.iitm.ac.in', 'iitm.ac.in'}
 
@@ -145,6 +152,9 @@ def dashboard():
 
 @app.route('/submit', methods=['POST'])
 def submit():
+    if not submissions_open():
+        flash("Submissions are closed. Deadline was 30th August, 2026.", "error")
+        return redirect(url_for('leaderboard'))
     user = session.get('user')
     if not user:
         flash("You must be logged in with an IITM email to submit.", "error")
@@ -197,10 +207,13 @@ def submit():
 
 @app.route('/submit_deliverables', methods=['POST'])
 def submit_deliverables():
+    if not submissions_open():
+        flash("Submissions are closed. Deadline was 30th August, 2026.", "error")
+        return redirect(url_for('leaderboard'))
     user = session.get('user')
     if not user:
         flash("You must be logged in to submit deliverables.", "error")
-        return redirect(url_for('leaderboard'))
+        return redirect(url_for('dashboard'))
 
     notebook_file = request.files.get('notebook')
     report_file = request.files.get('report')
